@@ -5,10 +5,6 @@ date: "2024-08-01"
 ---
 
 
-```{r}
-#install.packages("tidyverse")
-```
-
 ## R Markdown
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
@@ -24,7 +20,7 @@ library(tidyr)
 library(readr)
 library(plotly)
 
-# Set the maximum file size for uploads
+# Sets the maximum file size for uploads
 options(shiny.maxRequestSize = 50000 * 1024^2) # 50 MB maximum limit for file upload
 
 interval_display_names <- c(
@@ -135,7 +131,7 @@ process_daily_data <- function(data, symbol, custom_time_range = NULL) {
 
 
 
-# Define UI for the application
+# Defining UI for the application
 ui <- fluidPage(
   tags$head(
     tags$style(HTML("
