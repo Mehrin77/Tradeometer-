@@ -6,4 +6,4 @@ It supports multiple time-interval plots (e.g., 10:00-10:30) and includes data c
 To use, upload your data, view fixed-interval plots, or analyze custom time ranges.
 Clone the repository, install dependencies (shiny, dplyr, plotly), and run the app with runApp().
 
-The project is done for LankaBangla Securities Ltd 
+The project is done for LankaBangla Securities Ltd (LBSL). LBSL is the owner of the data.  
