@@ -1,4 +1,4 @@
-# Trad-O-meter by Mehrin - Financial Trading Data Analysis
+# Trade-O-meter by Mehrin - Financial Trading Data Analysis
 
 
 This Shiny app provides a comprehensive tool for analyzing financial trading data, including stock symbols, buy/sell pressures, and market trends. Users can upload their own CSV files or use real-time data from the Dhaka Stock Exchange. The app offers dynamic gauge plots that visualize buy/sell pressure across different time intervals.
