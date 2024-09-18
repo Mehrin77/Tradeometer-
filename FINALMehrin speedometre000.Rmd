@@ -1,0 +1,314 @@
+---
+title: "speedometre by Mehrin"
+output: html_document
+date: "2024-08-01"
+---
+
+
+```{r}
+#install.packages("tidyverse")
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(shiny)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(tidyr)
+library(readr)
+library(plotly)
+
+# Set the maximum file size for uploads
+options(shiny.maxRequestSize = 50000 * 1024^2) # 50 MB maximum limit for file upload
+
+interval_display_names <- c(
+  "10_00_00-10_30_59" = "10:00-10:30",
+  "10_31_00-10_59_59" = "10:30-10:59",
+  "11_00_00-11_30_59" = "11:00-11:30",
+  "11_31_00-11_59_59" = "11:30-11:59",
+  "12_00_00-12_30_59" = "12:00-12:30",
+  "12_31_00-12_59_59" = "12:30-12:59",
+  "13_00_00-13_30_59" = "13:00-13:30",
+  "13_31_00-13_59_59" = "13:30-13:59",
+  "14_00_00-14_30_59" = "14:00-14:30",
+  "10_00_00-14_30_59" = "DAY PLOT"
+)
+
+process_daily_data <- function(data, symbol, custom_time_range = NULL) {
+  # Data Cleaning
+  data <- data %>% filter(Symbol == symbol)
+  numeric_columns <- c("Price", "Splits", "Turnover", "Change")
+  data[numeric_columns] <- lapply(data[numeric_columns], as.numeric)
+  data$Symbol <- gsub("\\t", "", data$Symbol)
+  data$Symbol <- gsub("PB", "", data$Symbol)
+  SME <- c("AOPLC", "MAMUNAGRO", "CRAFTSMAN", "NIALCO", "MOSTFAMETL", "MASTERAGRO", "KBSEED", "ORYZAAGRO", "AMPL", "WEBCOATS", "ACHIASF", "KFL", "BENGALBISC", "APEXWEAV", "HIMADRI", "SADHESIVE", "MKFOOTWEAR", "YUSUFLOUR", "WONDERTOYS")
+  data_without_SME <- data %>% filter(!(Symbol %in% SME))
+  data_without_SME <- data_without_SME %>% mutate(across(where(is.character), ~ gsub("\\t\\t\\t", "", .)))
+ 
+  intervals <- names(interval_display_names)
+  plots <- list()
+ 
+  for (interval in intervals) {
+    if (interval == "10_00_00-14_30_59") {
+      if (!is.null(custom_time_range)) {
+        time_range <- strsplit(custom_time_range, "-")[[1]]
+        start_time <- as.POSIXct(time_range[1], format = "%H:%M:%S")
+        end_time <- as.POSIXct(time_range[2], format = "%H:%M:%S")
+      } else {
+        time_range <- strsplit(interval, "-")[[1]]
+        start_time <- as.POSIXct(time_range[1], format = "%H_%M_%S")
+        end_time <- as.POSIXct(time_range[2], format = "%H_%M_%S")
+      }
+    } else {
+      time_range <- strsplit(interval, "-")[[1]]
+      start_time <- as.POSIXct(time_range[1], format = "%H_%M_%S")
+      end_time <- as.POSIXct(time_range[2], format = "%H_%M_%S")
+    }
+   
+    interval_data <- data_without_SME %>% filter(as.POSIXct(Time, format = "%H:%M:%S") >= start_time & as.POSIXct(Time, format = "%H:%M:%S") <= end_time)
+    buy_orders <- interval_data %>% filter(Side == "Buy")
+    sell_orders <- interval_data %>% filter(Side == "Sell")
+    total_buy_quantity <- sum(as.numeric(buy_orders$Quantity), na.rm = TRUE)
+    total_sell_quantity <- sum(as.numeric(sell_orders$Quantity), na.rm = TRUE)
+    total_buy_value <- sum(as.numeric(buy_orders$Quantity) * as.numeric(buy_orders$Splits), na.rm = TRUE)
+    total_sell_value <- sum(as.numeric(sell_orders$Quantity) * as.numeric(sell_orders$Splits), na.rm = TRUE)
+    buy_pressure <- total_buy_value / (total_buy_value + total_sell_value)
+    sell_pressure <- total_sell_value / (total_buy_value + total_sell_value)
+    buy_pressure_pct <- round(buy_pressure * 100, 1)
+    sell_pressure_pct <- round(sell_pressure * 100, 1)
+    gauge_value <- max(buy_pressure, sell_pressure) * 100
+    delta_color <- ifelse(buy_pressure >= sell_pressure, "darkolivegreen", "tomato")
+    delta_value <- abs(buy_pressure - sell_pressure) * 100  # Calculate delta value
+   
+    fig <- plot_ly(
+      type = "indicator",
+      mode = "gauge+number",
+      value = gauge_value,
+      title = list(text = paste(symbol, interval_display_names[interval])),  # Always show interval display names
+      gauge = list(
+        axis = list(range = list(0, 100), tickwidth = 1, tickcolor = "darkslategray"),
+        bar = list(color = "darkslategray"),
+        bgcolor = "white",
+        borderwidth = 2,
+        bordercolor = "gray",
+        steps = list(
+          list(range = c(0, sell_pressure_pct), color = "tomato"),
+          list(range = c(sell_pressure_pct, 100), color = "darkolivegreen")
+        ),
+        threshold = list(
+          line = list(color = delta_color, width = 4),
+          thickness = 0.75,
+          value = gauge_value
+        )
+      ),
+      annotations = list(
+        list(x = 0.5, y = 0.5, text = paste(round(gauge_value, 1), "%"), showarrow = FALSE, font = list(color = "darkslategray", size = 25)),
+        list(x = 0.15, y = 0.05, text = paste("Sell Pressure", sell_pressure_pct, "%"), showarrow = FALSE, font = list(color = "white", size = 12)),
+        list(x = 0.85, y = 0.05, text = paste("Buy Pressure", buy_pressure_pct, "%"), showarrow = FALSE, font = list(color = "white", size = 12)),
+        list(x = 0.5, y = 0.35, text = paste("Delta", round(delta_value, 1), "%"), showarrow = FALSE, font = list(color = "darkslategray", size = 16))  # Delta annotation
+      )
+    ) %>% layout(
+      margin = list(l = 20, r = 30, b = 20, t = 50),
+      paper_bgcolor = "burlywood",
+      font = list(color = "darkslategray", family = "Times New Roman"),
+      shapes = list(
+        list(type = "rect", x0 = 0.30, x1 = 0.50, y0 = 0.001, y1 = 0.01, fillcolor = "tomato", line = list(color = "tomato")),
+        list(type = "rect", x0 = 0.70, x1 = 0.50, y0 = 0.001, y1 = 0.01, fillcolor = "darkolivegreen", line = list(color = "darkolivegreen"))
+      ),
+      annotations = list(
+        list(x = 0.20, y = 0.005, text = paste("Sell Pressure", sell_pressure_pct, "%"), showarrow = FALSE, font = list(color = "white", size = 12)),
+        list(x = 0.80, y = 0.005, text = paste("Buy Pressure", buy_pressure_pct, "%"), showarrow = FALSE, font = list(color = "white", size = 12))
+      )
+    )
+   
+    plots[[interval]] <- fig
+  }
+ 
+  return(plots)
+}
+
+
+
+# Define UI for the application
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      body { background-color: white; color: black; }
+      .shiny-input-container { margin-bottom: 20px; }
+      .well { background-color: #ffffff; border: 1px solid #ddd; box-shadow: none; }
+      .btn { background-color: green; color: white; }
+      .form-control { border-color: green; }
+      h1, h2, h3, h4, h5, h6 { color: green; }
+      .shiny-output-error { color: orange; }
+      h1 { font-size: 24px; }
+      h2 { font-size: 20px; }
+      h3 { font-size: 18px; }
+      ol { font-size: 16px; }
+      li { font-size: 16px; }
+      hr { margin: 10px 0; }
+    "))
+  ),
+  
+  fluidRow(
+    column(
+      width = 6,
+      h1("Welcome to the Financial Trading Data Analysis App (Internal use only)")
+    )
+  ),
+  
+  fluidRow(
+    column(
+      width = 6,
+      fileInput("csv_file", "Upload CSV File", accept = c(".csv")),
+      selectInput("symbol", "Select Symbol", choices = NULL),
+      actionButton("analyze_btn", "Analyze Data")
+    ),
+    column(
+      width = 6,
+      textInput("start_time", "Start Time (HH:MM:SS)", value = "10:00:00"),
+      textInput("end_time", "End Time (HH:MM:SS)", value = "14:30:00"),
+      actionButton("analyze_custom_time_btn", "Analyze Custom Time")
+    )
+  ),
+
+  
+  fluidRow(
+    column(width = 6, plotlyOutput("plot_10_00_00-14_30_59", height = "300px", width = "100%")),
+    column(width = 6, plotlyOutput("custom_plot", height = "300px", width = "100%"))
+  ),
+  fluidRow(
+    column(width = 12, HTML('<div style="height: 30px;"></div>'))  # Spacer row
+  ),
+  
+  fluidRow(
+    column(width = 4, plotlyOutput("plot_10_00_00-10_30_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_10_31_00-10_59_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_11_00_00-11_30_59", height = "300px", width = "100%"))
+  ),
+  
+  fluidRow(
+    column(width = 12, HTML('<div style="height: 30px;"></div>'))  # Spacer row
+  ),
+  
+  fluidRow(
+    column(width = 4, plotlyOutput("plot_11_31_00-11_59_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_12_00_00-12_30_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_12_31_00-12_59_59", height = "300px", width = "100%"))
+  ),
+  
+  fluidRow(
+    column(width = 12, HTML('<div style="height: 30px;"></div>'))  # Spacer row
+  ),
+  
+  fluidRow(
+    column(width = 4, plotlyOutput("plot_13_00_00-13_30_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_13_31_00-13_59_59", height = "300px", width = "100%")),
+    column(width = 4, plotlyOutput("plot_14_00_00-14_30_59", height = "300px", width = "100%"))
+  ),
+  
+  fluidRow(
+    column(width = 12, HTML('<div style="height: 30px;"></div>'))  # Spacer row
+  ),
+  
+  fluidRow(
+    column(width = 6,
+      h3("Instructions:"),
+      tags$ol(
+        tags$li("Upload a CSV file using the file input below."),
+        tags$li("Select a symbol from the dropdown menu."),
+        tags$li("Specify custom start and end times if needed."),
+        tags$li("Click the 'Analyze Data' button to visualize the market pressure.")
+      )
+    )
+  )
+)
+
+# Define server logic for the application
+# Define server logic for the application
+server <- function(input, output, session) {
+  
+  observe({
+    req(input$csv_file)
+    csv_data <- read.csv(input$csv_file$datapath)
+    symbols <- unique(csv_data$Symbol)
+    updateSelectInput(session, "symbol", choices = symbols)
+  })
+  
+  observeEvent(input$analyze_btn, {
+    req(input$csv_file, input$symbol)
+    
+    start_time <- ifelse(input$start_time == "", "10:00:00", input$start_time)
+    end_time <- ifelse(input$end_time == "", "14:30:00", input$end_time)
+    custom_time_range <- paste(start_time, end_time, sep = "-")
+    
+    csv_data <- read.csv(input$csv_file$datapath)
+    plots <- process_daily_data(csv_data, input$symbol, custom_time_range)
+    
+    # Render the plots for the fixed intervals
+    lapply(names(plots), function(interval) {
+      output[[paste0("plot_", gsub(":", "_", interval))]] <- renderPlotly({
+        plots[[interval]]
+      })
+    })
+  })
+  
+  observeEvent(input$analyze_custom_time_btn, {
+    req(input$csv_file, input$symbol)
+    
+    start_time <- input$start_time
+    end_time <- input$end_time
+    custom_time_range <- paste(start_time, end_time, sep = "-")
+    
+    csv_data <- read.csv(input$csv_file$datapath)
+    plots <- process_daily_data(csv_data, input$symbol, custom_time_range)
+    
+    # Render the custom plot
+    output$custom_plot <- renderPlotly({
+      if (!is.null(plots[["10_00_00-14_30_59"]])) {
+        fig <- plots[["10_00_00-14_30_59"]]
+        
+        # Clear existing annotations and shapes
+        fig <- fig %>% layout(
+          title = list(
+            text = paste(input$symbol, "Custom Plot"),  # Only show symbol and custom plot
+            xanchor = "center",
+            yanchor = "top",
+            x = 0.5,
+            y = 0.99
+          ),
+          annotations = list(),  # Clear any unwanted annotations
+          shapes = list(),       # Remove any shapes that might interfere
+          margin = list(l = 20, r = 30, b = 20, t = 50),
+          paper_bgcolor = "burlywood",
+          font = list(color = "darkslategray", family = "Times New Roman")
+        )
+        
+        fig
+      }
+    })
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
+
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
